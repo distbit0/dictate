@@ -1,6 +1,4 @@
 .vscode
 venv
-
-junk
 .env
-tmp.wav
+*.wav
