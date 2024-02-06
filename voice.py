@@ -36,7 +36,6 @@ def notify_user(message, duration=1):
 
 
 def record_until_signal(samplerate=48000):
-    notify_user("started recording!")
     audio_chunks = []
     stop_signal_received = threading.Event()
 
@@ -102,7 +101,6 @@ def recognize_and_copy_to_memory(audio_filename):
     controller.type(recognized_text)
     pyperclip.copy(recognized_text)
     subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
-    notify_user("Transcription complete! Result copied to clipboard.")
 
 
 def main():
@@ -120,7 +118,6 @@ def main():
         with open(FIFO_PATH, "w") as fifo:
             fifo.write("stop")
         os.remove(FIFO_PATH)
-        notify_user("Stopped recording.")
         exit(0)
 
     print("Starting... 5")
