@@ -74,7 +74,7 @@ def record_until_signal(samplerate=48000):
 
 def save_audio(filename, recordedAudio, samplerate):
     """Save audio data to a WAV file."""
-    recordedAudio = recordedAudio[::3]
+    # recordedAudio = recordedAudio[::3]
     soundfile.write(filename, recordedAudio, 16000, format="wav")
 
 
