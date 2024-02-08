@@ -1,6 +1,6 @@
 Starting... 5
 Lock file ./voice_lock_file does not exist. Creating...
 Lock file ./voice_lock_file created.
-Audio saved as recording.wav. Size: 352256 bytes.
+Audio saved as recording.wav. Size: 348160 bytes.
 Recognized Text:
-Testing, one, two, three.
+This is the test, testing 1, 2, 3

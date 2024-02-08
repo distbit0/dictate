@@ -4,7 +4,6 @@ import numpy as np
 import subprocess
 import pyperclip
 import soundfile
-import pynput
 import os
 import threading
 import sys
@@ -25,9 +24,6 @@ def getAbsPath(relPath):
 def getConfig():
     configFileName = getAbsPath("config.json")
     return json.loads(open(configFileName).read())
-
-
-import subprocess
 
 
 def notify_user(message, duration=1):
@@ -97,8 +93,7 @@ def processMp3File(mp3FileName):
 def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename)
     print(f"Recognized Text:\n{recognized_text}")
-    controller = pynput.keyboard.Controller()
-    controller.type(recognized_text)
+    os.system('./ydotoolBin/ydotool type "' + recognized_text + '" --next-delay 0')
     pyperclip.copy(recognized_text)
     subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
 
