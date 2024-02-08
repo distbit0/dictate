@@ -3,3 +3,5 @@ venv
 .env
 *.wav
 voice.sh
+script_log.txt
+script_error.txt
