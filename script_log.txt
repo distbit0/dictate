@@ -1,6 +1,6 @@
 Starting... 5
 Lock file ./voice_lock_file does not exist. Creating...
 Lock file ./voice_lock_file created.
-Audio saved as recording.wav. Size: 348160 bytes.
+Audio saved as recording.wav. Size: 471040 bytes.
 Recognized Text:
-This is the test, testing 1, 2, 3
+Welcome to my channel. Today, I'm going to show you how to make a simple and delicious cake. Don't forget to subscribe to my channel and like the video. Thank you for watching.
