@@ -7,11 +7,13 @@ import soundfile
 import os
 import threading
 import sys
+import time
 from os import path
 import json
 
 FIFO_PATH = "./stop_recording_signal"
 LOCK_FILE_PATH = "./voice_lock_file"
+MAX_RECORDING_DURATION = 120
 sys.stdout = open("script_log.txt", "w")
 sys.stderr = open("script_error.txt", "w")
 
@@ -27,11 +29,11 @@ def getConfig():
 
 
 def notify_user(message, duration=1):
-    """Send a temporary notification to the user that disappears after a specified duration."""
+    print(message)
     subprocess.run(["notify-send", message, "-t", str(duration)])
 
 
-def record_until_signal(samplerate=48000):
+def record_until_signal(samplerate):
     audio_chunks = []
     stop_signal_received = threading.Event()
 
@@ -55,43 +57,48 @@ def record_until_signal(samplerate=48000):
     )
     stream.start()
 
+    start_time = time.time()
     about_to_stop = False
     while about_to_stop is False:
-        # if no lock file, exit early
         if not os.path.exists(LOCK_FILE_PATH):
-            print("Lock file not found. Exiting.")
             notify_user("Lock file not found. Exiting.")
-            exit(0)
-        # if there is no pipe, stop recording
+            about_to_stop = True
         if not os.path.exists(FIFO_PATH):
             about_to_stop = True
         if stop_signal_received.is_set():
             about_to_stop = True
+        if time.time() - start_time > MAX_RECORDING_DURATION:
+            notify_user(
+                f"Recording exceeded maximum duration of {MAX_RECORDING_DURATION} seconds. Stopping."
+            )
+            about_to_stop = True
+        time.sleep(0.1)  # Add a small delay to reduce CPU usage
     stream.stop()
     stream.close()
-    return np.concatenate(audio_chunks)[:, 0], samplerate
+    return np.concatenate(audio_chunks)[:, 0]
 
 
 def save_audio(filename, recordedAudio, samplerate):
-    """Save audio data to a WAV file."""
-    # recordedAudio = recordedAudio[::3]
-    soundfile.write(filename, recordedAudio, 16000, format="wav")
+    soundfile.write(filename, recordedAudio, samplerate, format="wav")
 
 
-def processMp3File(mp3FileName):
-    apiKey = os.environ.get("OPENAI_API_KEY")
+def processMp3File(mp3FileName, apiKey):
     client = OpenAI(api_key=apiKey)
-    api_response = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=open(mp3FileName, "rb"),
-        language="en",
-        prompt=None,
-    )
-    return api_response.text
+    try:
+        api_response = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=open(mp3FileName, "rb"),
+            language="en",
+            prompt=None,
+        )
+        return api_response.text
+    except Exception as e:
+        print(f"Error during audio transcription: {e}")
+        return ""
 
 
-def recognize_and_copy_to_memory(audio_filename):
-    recognized_text = processMp3File(audio_filename)
+def recognize_and_copy_to_memory(audio_filename, apiKey):
+    recognized_text = processMp3File(audio_filename, apiKey)
     print(f"Recognized Text:\n{recognized_text}")
     os.system('./ydotoolBin/ydotool type "' + recognized_text + '" --next-delay 0')
     pyperclip.copy(recognized_text)
@@ -116,8 +123,6 @@ def main():
         exit(0)
 
     print("Starting... 5")
-    # let's write some lock file and remove it on exit
-    # if lock file exists, then exit
     if os.path.exists(LOCK_FILE_PATH):
         print(f"Lock file {LOCK_FILE_PATH} already exists.")
         notify_user(
@@ -132,12 +137,18 @@ def main():
     lock_file.close()
     print(f"Lock file {LOCK_FILE_PATH} created.")
 
+    apiKey = os.environ.get("OPENAI_API_KEY")
+
     try:
+        notify_user("Starting transcription...")
         audio_filename = "recording.wav"
-        audio_data, samplerate = record_until_signal()
+        samplerate = 48000
+        audio_data = record_until_signal(samplerate)
         save_audio(audio_filename, audio_data, samplerate)
         print(f"Audio saved as {audio_filename}. Size: {len(audio_data) * 2} bytes.")
-        recognize_and_copy_to_memory(audio_filename)
+        recognize_and_copy_to_memory(audio_filename, apiKey)
+    except Exception as e:
+        print(f"An error occurred: {e}")
     finally:
         os.remove(LOCK_FILE_PATH)
         try:
