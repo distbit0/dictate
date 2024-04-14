@@ -72,7 +72,7 @@ def record_until_signal(samplerate):
                 f"Recording exceeded maximum duration of {MAX_RECORDING_DURATION} seconds. Stopping."
             )
             about_to_stop = True
-        time.sleep(0.1)  # Add a small delay to reduce CPU usage
+        time.sleep(0.25)  # Add a small delay to reduce CPU usage
     stream.stop()
     stream.close()
     return np.concatenate(audio_chunks)[:, 0]
