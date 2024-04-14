@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/pimania/dev/dictation/voice.py", line 163, in <module>
+    main()
+  File "/home/pimania/dev/dictation/voice.py", line 148, in main
+    audio_data = record_until_signal(samplerate)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pimania/dev/dictation/voice.py", line 75, in record_until_signal
+    time.sleep(0.25)  # Add a small delay to reduce CPU usage
+    ^^^^^^^^^^^^^^^^
+KeyboardInterrupt
