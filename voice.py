@@ -123,11 +123,14 @@ def processMp3File(mp3FileName, apiKey):
 def recognize_and_copy_to_memory(audio_filename, apiKey):
     recognized_text = processMp3File(audio_filename, apiKey)
     logger.info(f"Recognized Text:\n{recognized_text}")
-    os.system(
-        "echo -e 'typedelay 0\ntypehold 0\ntype " + recognized_text + "' | dotool"
-    )
-    pyperclip.copy(recognized_text)
-    subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
+    if getConfig()["type_dictation"]:
+        os.system(
+            "echo -e 'typedelay 0\ntypehold 0\ntype " + recognized_text + "' | dotool"
+        )
+
+    if getConfig()["copy_dictation"]:
+        pyperclip.copy(recognized_text)
+        subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
 
 
 def main():
