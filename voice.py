@@ -1,4 +1,5 @@
 import sounddevice as sd
+import pulsectl
 from openai import OpenAI
 import numpy as np
 import subprocess
@@ -10,12 +11,33 @@ import sys
 import time
 from os import path
 import json
+from loguru import logger
+
+
+def configure_logging():
+    logger.add(
+        "app.log",
+        rotation="30 KB",
+        retention=5,
+        enqueue=True,
+        backtrace=True,
+        diagnose=True,
+    )
+
+
+configure_logging()
 
 FIFO_PATH = "./stop_recording_signal"
 LOCK_FILE_PATH = "./voice_lock_file"
-MAX_RECORDING_DURATION = 120
-sys.stdout = open("script_log.txt", "w")
-sys.stderr = open("script_error.txt", "w")
+
+
+def set_input_device(device_name):
+    with pulsectl.Pulse("my-client-name") as pulse:
+        for source in pulse.source_list():
+            if source.name == device_name:
+                pulse.default_set(source)
+                print("Input device set to:", device_name)
+                break
 
 
 def getAbsPath(relPath):
@@ -29,13 +51,14 @@ def getConfig():
 
 
 def notify_user(message, duration=1):
-    print(message)
+    logger.info(message)
     subprocess.run(["notify-send", message, "-t", str(duration)])
 
 
 def record_until_signal(samplerate):
     audio_chunks = []
     stop_signal_received = threading.Event()
+    max_recording_duration = getConfig()["max_recording_duration"]
 
     def listen_to_pipe():
         with open(FIFO_PATH, "r") as fifo:
@@ -46,7 +69,7 @@ def record_until_signal(samplerate):
 
     def audio_callback(indata, frames, time, status):
         if status:
-            print("WARNING:", status)
+            logger.info("WARNING:", status)
         audio_chunks.append(indata.copy())
 
     stream = sd.InputStream(
@@ -67,9 +90,9 @@ def record_until_signal(samplerate):
             about_to_stop = True
         if stop_signal_received.is_set():
             about_to_stop = True
-        if time.time() - start_time > MAX_RECORDING_DURATION:
+        if time.time() - start_time > max_recording_duration:
             notify_user(
-                f"Recording exceeded maximum duration of {MAX_RECORDING_DURATION} seconds. Stopping."
+                f"Recording exceeded maximum duration of {max_recording_duration} seconds. Stopping."
             )
             about_to_stop = True
         time.sleep(0.25)  # Add a small delay to reduce CPU usage
@@ -89,18 +112,20 @@ def processMp3File(mp3FileName, apiKey):
             model="whisper-1",
             file=open(mp3FileName, "rb"),
             language="en",
-            prompt=None,
+            prompt="My idea is the following: ",
         )
         return api_response.text
     except Exception as e:
-        print(f"Error during audio transcription: {e}")
+        logger.info(f"Error during audio transcription: {e}")
         return ""
 
 
 def recognize_and_copy_to_memory(audio_filename, apiKey):
     recognized_text = processMp3File(audio_filename, apiKey)
-    print(f"Recognized Text:\n{recognized_text}")
-    os.system('./ydotoolBin/ydotool type "' + recognized_text + '" --next-delay 0')
+    logger.info(f"Recognized Text:\n{recognized_text}")
+    os.system(
+        "echo -e 'typedelay 0\ntypehold 0\ntype " + recognized_text + "' | dotool"
+    )
     pyperclip.copy(recognized_text)
     subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
 
@@ -108,7 +133,7 @@ def recognize_and_copy_to_memory(audio_filename, apiKey):
 def main():
     if not os.path.exists(FIFO_PATH):
         if os.path.exists(LOCK_FILE_PATH):
-            print(f"Lock file {LOCK_FILE_PATH} already exists.")
+            logger.info(f"Lock file {LOCK_FILE_PATH} already exists.")
             notify_user(
                 "Already running. Remove the lock file if you want to run another instance. File: "
                 + LOCK_FILE_PATH
@@ -116,39 +141,44 @@ def main():
             exit(0)
         os.mkfifo(FIFO_PATH)
     else:
-        print(f"Named pipe {FIFO_PATH} already exists.")
+        logger.info(f"Named pipe {FIFO_PATH} already exists.")
         with open(FIFO_PATH, "w") as fifo:
             fifo.write("stop")
         os.remove(FIFO_PATH)
         exit(0)
 
-    print("Starting... 5")
+    logger.info("Starting... 5")
     if os.path.exists(LOCK_FILE_PATH):
-        print(f"Lock file {LOCK_FILE_PATH} already exists.")
+        logger.info(f"Lock file {LOCK_FILE_PATH} already exists.")
         notify_user(
             "Already running. Remove the lock file if you want to run another instance. File: "
             + LOCK_FILE_PATH
         )
         exit(0)
 
-    print(f"Lock file {LOCK_FILE_PATH} does not exist. Creating...")
+    logger.info(f"Lock file {LOCK_FILE_PATH} does not exist. Creating...")
     lock_file = open(LOCK_FILE_PATH, "w")
     lock_file.write("1")
     lock_file.close()
-    print(f"Lock file {LOCK_FILE_PATH} created.")
+    logger.info(f"Lock file {LOCK_FILE_PATH} created.")
 
     apiKey = os.environ.get("OPENAI_API_KEY")
 
     try:
         notify_user("Starting transcription...")
+        if "input_device" in getConfig():
+            logger.info(f"Input device set to: {getConfig()['input_device']}")
+            set_input_device(getConfig()["input_device"])
         audio_filename = "recording.wav"
         samplerate = 48000
         audio_data = record_until_signal(samplerate)
         save_audio(audio_filename, audio_data, samplerate)
-        print(f"Audio saved as {audio_filename}. Size: {len(audio_data) * 2} bytes.")
+        logger.info(
+            f"Audio saved as {audio_filename}. Size: {len(audio_data) * 2} bytes."
+        )
         recognize_and_copy_to_memory(audio_filename, apiKey)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.info(f"An error occurred: {e}")
     finally:
         os.remove(LOCK_FILE_PATH)
         try:
