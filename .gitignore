@@ -3,5 +3,6 @@ venv
 .env
 *.wav
 voice.sh
-app.log
+*log
+*mp3
 tmp/
