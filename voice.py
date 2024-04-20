@@ -1,6 +1,5 @@
 import sounddevice as sd
 import shlex
-import sys
 import traceback
 import random
 from pydub import AudioSegment
