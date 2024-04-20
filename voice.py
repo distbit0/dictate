@@ -61,7 +61,12 @@ def notify_user(message, duration=1):
     subprocess.run(["notify-send", message, "-t", str(duration)])
 
 
-def record_until_signal(samplerate):
+def record_until_signal():
+    randomNumber = (
+        str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
+    )
+    file_name = getAbsPath(f"{randomNumber}.wav")
+    samplerate = 48000
     audio_chunks = []
     stop_signal_received = threading.Event()
     max_recording_duration = getConfig()["max_recording_duration"]
@@ -104,7 +109,8 @@ def record_until_signal(samplerate):
         time.sleep(0.25)  # Add a small delay to reduce CPU usage
     stream.stop()
     stream.close()
-    return np.concatenate(audio_chunks)[:, 0]
+    audio_data = np.concatenate(audio_chunks)[:, 0]
+    save_audio(file_name, audio_data, samplerate)
 
 
 def save_audio(filename, recordedAudio, samplerate):
@@ -151,7 +157,6 @@ def chunk_mp3(mp3_file):
         file_paths.append(chunk_file)
 
     os.remove(mp3_file)
-    deleteMp3sOlderThan(60 * 60 * 12, getAbsPath("tmp/"))
 
     return file_paths
 
@@ -178,12 +183,19 @@ def transcribe_mp3(audio_chunks):
         markdown_transcript += " " + transcript + "."
 
     markdown_transcript = re.sub(
-        r"((?:\[^.!?\]+\[.!?\]){6})", r"\1\n\n", markdown_transcript
-    )  # split on every 6th sentence
+        r"((?:[^.!?]+[.!?]\s){4})", r"\1\n\n", markdown_transcript
+    )  # split on every 4th sentence
+    markdown_transcript = "\n".join(
+        [
+            line.strip(". ") if not line.strip(". ") else line
+            for line in markdown_transcript.split("\n")
+        ]
+    ).strip()
 
     # Delete all the temporary mp3 files
     for file in audio_chunks:
         os.remove(file)
+    deleteMp3sOlderThan(60 * 60 * 12, getAbsPath("tmp/"))
 
     return markdown_transcript
 
@@ -201,11 +213,14 @@ def processMp3File(mp3FileName):
 def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
-    textForDoTool = recognized_text.replace("\n", "\nkey enter\n")
     if getConfig()["type_dictation"]:
-        os.system(
-            "echo -e 'typedelay 0\ntypehold 0\ntype " + textForDoTool + "' | dotool"
+        textForDoTool = recognized_text.replace("\n", "")  # "\nkey enter\ntype ")
+        command = (
+            "echo -e 'typedelay 0\ntypehold 0\nkeydelay 50\nkeyhold 50\ntype "
+            + textForDoTool
+            + "' | dotool"
         )
+        os.system(command)
 
     if getConfig()["copy_dictation"]:
         pyperclip.copy(recognized_text)
@@ -249,16 +264,8 @@ def main():
         if "input_device" in getConfig():
             logger.info(f"Input device set to: {getConfig()['input_device']}")
             set_input_device(getConfig()["input_device"])
-        randomNumber = (
-            str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
-        )
-        audio_filename = getAbsPath(f"{randomNumber}.wav")
-        samplerate = 48000
-        audio_data = record_until_signal(samplerate)
-        save_audio(audio_filename, audio_data, samplerate)
-        logger.info(
-            f"Audio saved as {audio_filename}. Size: {len(audio_data) * 2} bytes."
-        )
+        audio_filename = record_until_signal()
+        logger.info(f"Audio saved as {audio_filename}")
         recognize_and_copy_to_memory(audio_filename)
     except Exception as e:
         logger.info(f"An error occurred: {e}")
