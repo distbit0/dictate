@@ -218,15 +218,11 @@ def processMp3File(mp3FileName):
 def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
+    subprocess.run(
+        ["xclip", "-selection", "clipboard"], input=recognized_text.encode("utf-8")
+    )
     if getConfig()["type_dictation"]:
-        subprocess.run(
-            ["xclip", "-selection", "primary"], input=recognized_text.encode("utf-8")
-        )
-        os.system("echo -e 'keydelay 0\nkeyhold 0\nkey shift+insert' | dotool")
-
-    if getConfig()["copy_dictation"]:
-        pyperclip.copy(recognized_text)
-        subprocess.run(["xclip"], input=recognized_text.encode("utf-8"))
+        os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey ctrl+v' | dotool")
 
 
 def main():
