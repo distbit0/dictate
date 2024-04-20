@@ -219,7 +219,7 @@ def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
     if getConfig()["type_dictation"]:
-        textForDoTool = recognized_text.replace("\n", "")  # "\nkey enter\ntype ")
+        textForDoTool = recognized_text.replace("\n", "\r")
         command = (
             "echo -e 'typedelay 0\ntypehold 0\nkeydelay 50\nkeyhold 50\ntype "
             + shlex.quote(textForDoTool)[1:-1]
