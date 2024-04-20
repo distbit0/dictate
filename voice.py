@@ -219,16 +219,10 @@ def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
     if getConfig()["type_dictation"]:
-        textChunks = recognized_text.split("\n")
-        for i, chunk in enumerate(textChunks):
-            if chunk:
-                chunk = shlex.quote(chunk)[1:-1]
-                command = (
-                    "echo -e 'typedelay 0\ntypehold 0\n\ntype " + chunk + "' | dotool"
-                )
-                os.system(command)
-            if i != len(textChunks) - 1:
-                os.system("echo -e 'keydelay 0\nkeyhold 0\nkey enter' | dotool")
+        subprocess.run(
+            ["xclip", "-selection", "primary"], input=recognized_text.encode("utf-8")
+        )
+        os.system("echo -e 'keydelay 0\nkeyhold 0\nkey shift+insert' | dotool")
 
     if getConfig()["copy_dictation"]:
         pyperclip.copy(recognized_text)
