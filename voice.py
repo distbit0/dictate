@@ -1,4 +1,7 @@
 import sounddevice as sd
+import shlex
+import sys
+import traceback
 import random
 from pydub import AudioSegment
 from math import ceil
@@ -111,6 +114,7 @@ def record_until_signal():
     stream.close()
     audio_data = np.concatenate(audio_chunks)[:, 0]
     save_audio(file_name, audio_data, samplerate)
+    return file_name
 
 
 def save_audio(filename, recordedAudio, samplerate):
@@ -134,6 +138,7 @@ def deleteMp3sOlderThan(maxAgeSeconds, output_dir):
 
 def chunk_mp3(mp3_file):
     max_size_mb = 0.8
+    print(mp3_file)
     randomNumber = mp3_file.split("/")[-1].split(".")[0]
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(script_dir, "tmp")
@@ -206,7 +211,8 @@ def processMp3File(mp3FileName):
         markdown_transcript = transcribe_mp3(audio_chunks)
         return markdown_transcript
     except Exception as e:
-        logger.info(f"Error during audio transcription: {e}")
+        error = traceback.format_exc()
+        logger.info(f"Error during audio transcription: {e} {error}")
         return ""
 
 
@@ -217,7 +223,7 @@ def recognize_and_copy_to_memory(audio_filename):
         textForDoTool = recognized_text.replace("\n", "")  # "\nkey enter\ntype ")
         command = (
             "echo -e 'typedelay 0\ntypehold 0\nkeydelay 50\nkeyhold 50\ntype "
-            + textForDoTool
+            + shlex.quote(textForDoTool)[1:-1]
             + "' | dotool"
         )
         os.system(command)
@@ -268,7 +274,8 @@ def main():
         logger.info(f"Audio saved as {audio_filename}")
         recognize_and_copy_to_memory(audio_filename)
     except Exception as e:
-        logger.info(f"An error occurred: {e}")
+        error = traceback.format_exc()
+        logger.info(f"An error occurred: {e} {error}")
     finally:
         os.remove(LOCK_FILE_PATH)
         try:
