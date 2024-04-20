@@ -1,5 +1,5 @@
 {
-    "max_recording_duration": 120,
+    "max_recording_duration": 240,
     "input_device": "alsa_input.pci-0000_03_00.6.3.HiFi__hw_acp__source",
     "copy_dictation": false,
     "type_dictation": true

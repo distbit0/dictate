@@ -1,17 +1,23 @@
 import sounddevice as sd
+import random
+from pydub import AudioSegment
+from math import ceil
 import pulsectl
 from openai import OpenAI
 import numpy as np
 import subprocess
 import pyperclip
+import re
 import soundfile
 import os
 import threading
-import sys
 import time
 from os import path
 import json
 from loguru import logger
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def configure_logging():
@@ -105,27 +111,100 @@ def save_audio(filename, recordedAudio, samplerate):
     soundfile.write(filename, recordedAudio, samplerate, format="wav")
 
 
-def processMp3File(mp3FileName, apiKey):
+def deleteMp3sOlderThan(maxAgeSeconds, output_dir):
+    files = os.listdir(output_dir)
+    for file in files:
+        if file.split(".")[-1] in ["mp3", "webm", "part", "mp4", "txt"]:
+            filePath = os.path.join(output_dir, file)
+            fileName = filePath.split("/")[-1].split(".")[0]
+            if fileName.count("_") == 3:
+                creationTime = int(fileName.split("_")[0])
+            else:
+                creationTime = os.path.getctime(filePath)
+            if time.time() - creationTime > maxAgeSeconds:
+                print("deleting file", filePath)
+                os.remove(filePath)
+
+
+def chunk_mp3(mp3_file):
+    max_size_mb = 0.8
+    randomNumber = mp3_file.split("/")[-1].split(".")[0]
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(script_dir, "tmp")
+    # Load the MP3 file using pydub
+    audio = AudioSegment.from_mp3(mp3_file)
+
+    # Calculate the number of chunks based on the maximum size
+    chunk_size_bytes = max_size_mb * 1024 * 1024
+    total_chunks = ceil(len(audio) / chunk_size_bytes)
+
+    # Split the audio into chunks
+    cumDurOfChunks = 0
+    file_paths = []
+    for i in range(total_chunks):
+        start_time = i * chunk_size_bytes
+        end_time = min((i + 1) * chunk_size_bytes, len(audio))
+        chunk = audio[start_time:end_time]
+        chunk_file = os.path.join(output_dir, f"{randomNumber}_chunk_{i+1}.mp3")
+        cumDurOfChunks += len(chunk) / 1000
+        chunk.export(chunk_file, format="mp3")
+        file_paths.append(chunk_file)
+
+    os.remove(mp3_file)
+    deleteMp3sOlderThan(60 * 60 * 12, getAbsPath("tmp/"))
+
+    return file_paths
+
+
+def transcribe_mp3(audio_chunks):
+    apiKey = os.environ.get("OPENAI_API_KEY")
     client = OpenAI(api_key=apiKey)
+    markdown_transcript = ""
+    for i, chunk_filename in enumerate(audio_chunks):
+        print("transcribing chunk", i + 1, "of", len(audio_chunks))
+        with open(chunk_filename, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-1",
+                language="en",
+                response_format="text",
+                prompt=(
+                    "Continuation of audio (might begin mid-sentence): "
+                    if i > 0
+                    else "Welcome to this technical episode. "
+                ),
+            )
+        transcript = transcript[:-1] if transcript[-1] == "." else transcript
+        markdown_transcript += " " + transcript + "."
+
+    markdown_transcript = re.sub(
+        r"((?:\[^.!?\]+\[.!?\]){6})", r"\1\n\n", markdown_transcript
+    )  # split on every 6th sentence
+
+    # Delete all the temporary mp3 files
+    for file in audio_chunks:
+        os.remove(file)
+
+    return markdown_transcript
+
+
+def processMp3File(mp3FileName):
     try:
-        api_response = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=open(mp3FileName, "rb"),
-            language="en",
-            prompt="My idea is the following: ",
-        )
-        return api_response.text
+        audio_chunks = chunk_mp3(mp3FileName)
+        markdown_transcript = transcribe_mp3(audio_chunks)
+        return markdown_transcript
     except Exception as e:
         logger.info(f"Error during audio transcription: {e}")
         return ""
 
 
-def recognize_and_copy_to_memory(audio_filename, apiKey):
-    recognized_text = processMp3File(audio_filename, apiKey)
+def recognize_and_copy_to_memory(audio_filename):
+    recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
+    textForDoTool = recognized_text.replace("\n", "\nkey enter\n")
     if getConfig()["type_dictation"]:
         os.system(
-            "echo -e 'typedelay 0\ntypehold 0\ntype " + recognized_text + "' | dotool"
+            "echo -e 'typedelay 0\ntypehold 0\ntype " + textForDoTool + "' | dotool"
         )
 
     if getConfig()["copy_dictation"]:
@@ -165,21 +244,22 @@ def main():
     lock_file.close()
     logger.info(f"Lock file {LOCK_FILE_PATH} created.")
 
-    apiKey = os.environ.get("OPENAI_API_KEY")
-
     try:
         notify_user("Starting transcription...")
         if "input_device" in getConfig():
             logger.info(f"Input device set to: {getConfig()['input_device']}")
             set_input_device(getConfig()["input_device"])
-        audio_filename = "recording.wav"
+        randomNumber = (
+            str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
+        )
+        audio_filename = getAbsPath(f"{randomNumber}.wav")
         samplerate = 48000
         audio_data = record_until_signal(samplerate)
         save_audio(audio_filename, audio_data, samplerate)
         logger.info(
             f"Audio saved as {audio_filename}. Size: {len(audio_data) * 2} bytes."
         )
-        recognize_and_copy_to_memory(audio_filename, apiKey)
+        recognize_and_copy_to_memory(audio_filename)
     except Exception as e:
         logger.info(f"An error occurred: {e}")
     finally:
