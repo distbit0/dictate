@@ -1,5 +1,4 @@
 import sounddevice as sd
-import shlex
 import traceback
 import random
 from pydub import AudioSegment
@@ -8,7 +7,6 @@ import pulsectl
 from openai import OpenAI
 import numpy as np
 import subprocess
-import pyperclip
 import re
 import soundfile
 import os
@@ -61,59 +59,6 @@ def getConfig():
 def notify_user(message, duration=1):
     logger.info(message)
     subprocess.run(["notify-send", message, "-t", str(duration)])
-
-
-def record_until_signal():
-    randomNumber = (
-        str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
-    )
-    file_name = getAbsPath(f"{randomNumber}.wav")
-    samplerate = 48000
-    audio_chunks = []
-    stop_signal_received = threading.Event()
-    max_recording_duration = getConfig()["max_recording_duration"]
-
-    def listen_to_pipe():
-        with open(FIFO_PATH, "r") as fifo:
-            fifo.read()
-        stop_signal_received.set()
-
-    threading.Thread(target=listen_to_pipe, daemon=True).start()
-
-    def audio_callback(indata, frames, time, status):
-        if status:
-            logger.info("WARNING:", status)
-        audio_chunks.append(indata.copy())
-
-    stream = sd.InputStream(
-        samplerate=samplerate,
-        channels=1,
-        blocksize=256,
-        callback=audio_callback,
-    )
-    stream.start()
-
-    start_time = time.time()
-    about_to_stop = False
-    while about_to_stop is False:
-        if not os.path.exists(LOCK_FILE_PATH):
-            notify_user("Lock file not found. Exiting.")
-            about_to_stop = True
-        if not os.path.exists(FIFO_PATH):
-            about_to_stop = True
-        if stop_signal_received.is_set():
-            about_to_stop = True
-        if time.time() - start_time > max_recording_duration:
-            notify_user(
-                f"Recording exceeded maximum duration of {max_recording_duration} seconds. Stopping."
-            )
-            about_to_stop = True
-        time.sleep(0.25)  # Add a small delay to reduce CPU usage
-    stream.stop()
-    stream.close()
-    audio_data = np.concatenate(audio_chunks)[:, 0]
-    save_audio(file_name, audio_data, samplerate)
-    return file_name
 
 
 def save_audio(filename, recordedAudio, samplerate):
@@ -223,6 +168,59 @@ def recognize_and_copy_to_memory(audio_filename):
     )
     if getConfig()["type_dictation"]:
         os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey paste' | dotool")
+
+
+def record_until_signal():
+    randomNumber = (
+        str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
+    )
+    file_name = getAbsPath(f"{randomNumber}.wav")
+    samplerate = 48000
+    audio_chunks = []
+    stop_signal_received = threading.Event()
+    max_recording_duration = getConfig()["max_recording_duration"]
+
+    def listen_to_pipe():
+        with open(FIFO_PATH, "r") as fifo:
+            fifo.read()
+        stop_signal_received.set()
+
+    threading.Thread(target=listen_to_pipe, daemon=True).start()
+
+    def audio_callback(indata, frames, time, status):
+        if status:
+            logger.info("WARNING:", status)
+        audio_chunks.append(indata.copy())
+
+    stream = sd.InputStream(
+        samplerate=samplerate,
+        channels=1,
+        blocksize=256,
+        callback=audio_callback,
+    )
+    stream.start()
+
+    start_time = time.time()
+    about_to_stop = False
+    while about_to_stop is False:
+        if not os.path.exists(LOCK_FILE_PATH):
+            notify_user("Lock file not found. Exiting.")
+            about_to_stop = True
+        if not os.path.exists(FIFO_PATH):
+            about_to_stop = True
+        if stop_signal_received.is_set():
+            about_to_stop = True
+        if time.time() - start_time > max_recording_duration:
+            notify_user(
+                f"Recording exceeded maximum duration of {max_recording_duration} seconds. Stopping."
+            )
+            about_to_stop = True
+        time.sleep(0.25)  # Add a small delay to reduce CPU usage
+    stream.stop()
+    stream.close()
+    audio_data = np.concatenate(audio_chunks)[:, 0]
+    save_audio(file_name, audio_data, samplerate)
+    return file_name
 
 
 def main():
