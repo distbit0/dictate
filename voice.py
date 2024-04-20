@@ -222,7 +222,7 @@ def recognize_and_copy_to_memory(audio_filename):
         ["xclip", "-selection", "clipboard"], input=recognized_text.encode("utf-8")
     )
     if getConfig()["type_dictation"]:
-        os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey ctrl+v' | dotool")
+        os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey paste' | dotool")
 
 
 def main():
