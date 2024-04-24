@@ -42,7 +42,9 @@ def set_input_device(device_name):
         for source in pulse.source_list():
             if source.name == device_name:
                 pulse.default_set(source)
+                pulse.volume_set_all_chans(source, 1.5)
                 print("Input device set to:", device_name)
+                print("Volume increased to 150%")
                 break
 
 
@@ -80,6 +82,14 @@ def deleteMp3sOlderThan(maxAgeSeconds, output_dir):
                 os.remove(filePath)
 
 
+def increase_volume(file_path, volume_boost):
+    audio = AudioSegment.from_wav(file_path)
+    boost_db = (1 + volume_boost / 100) * 6
+    boosted_audio = audio + boost_db
+    boosted_audio.export(file_path, format="wav")
+    print(f"Volume of '{file_path}' increased by {volume_boost}%")
+
+
 def chunk_mp3(mp3_file):
     max_size_mb = 0.8
     print(mp3_file)
@@ -105,7 +115,7 @@ def chunk_mp3(mp3_file):
         chunk.export(chunk_file, format="mp3")
         file_paths.append(chunk_file)
 
-    os.remove(mp3_file)
+    # os.remove(mp3_file)
 
     return file_paths
 
@@ -150,6 +160,7 @@ def transcribe_mp3(audio_chunks):
 
 
 def processMp3File(mp3FileName):
+    increase_volume(mp3FileName, getConfig()["volume_boost_percent"])
     try:
         audio_chunks = chunk_mp3(mp3FileName)
         markdown_transcript = transcribe_mp3(audio_chunks)
@@ -174,7 +185,7 @@ def record_until_signal():
     randomNumber = (
         str(int(time.time())) + "_" + str(random.randint(1000000000, 9999999999))
     )
-    file_name = getAbsPath(f"{randomNumber}.wav")
+    file_name = getAbsPath(f"tmp/{randomNumber}.wav")
     samplerate = 48000
     audio_chunks = []
     stop_signal_received = threading.Event()
