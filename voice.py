@@ -11,6 +11,7 @@ import re
 import soundfile
 import os
 import threading
+import shlex
 import time
 from os import path
 import json
@@ -174,11 +175,23 @@ def processMp3File(mp3FileName):
 def recognize_and_copy_to_memory(audio_filename):
     recognized_text = processMp3File(audio_filename).strip()
     logger.info(f"Recognized Text:\n{recognized_text}")
-    subprocess.run(
-        ["xclip", "-selection", "clipboard"], input=recognized_text.encode("utf-8")
-    )
-    if getConfig()["type_dictation"]:
-        os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey paste' | dotool")
+    # subprocess.run(
+    #     ["xclip", "-selection", "clipboard"], input=recognized_text.encode("utf-8")
+    # )
+    # if getConfig()["type_dictation"]:
+    #     os.system("echo -e 'keydelay 0\\nkeyhold 0\\nkey paste' | dotool")
+    # os.system("xdotool type " + recognized_text) 
+    cmd = [
+    "xdotool",
+    "type",
+    "--delay",
+    str(12),
+    "--clearmodifiers",
+    "--",
+    recognized_text,
+    ]
+    logger.debug("Running xdotool: %s", shlex.join(cmd))
+    subprocess.run(cmd, check=True)
 
 
 def record_until_signal():
@@ -265,7 +278,7 @@ def main():
     lock_file = open(LOCK_FILE_PATH, "w")
     lock_file.write("1")
     lock_file.close()
-    logger.info(f"Lock file {LOCK_FILE_PATH} created.")
+    logger.info(f"Lock file {LOCK_FILE_PATH} created.") 
 
     try:
         notify_user("Starting transcription...")
