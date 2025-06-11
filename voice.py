@@ -230,6 +230,7 @@ def record_until_signal():
     stream.stop()
     stream.close()
     audio_data = np.concatenate(audio_chunks)[:, 0]
+    os.makedirs(os.path.dirname(file_name), exist_ok=True)
     save_audio(file_name, audio_data, samplerate)
     return file_name
 
