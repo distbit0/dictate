@@ -12,6 +12,7 @@ dependencies = [
     "pulsectl>=24.12.0",
     "pyaudio",
     "pydub>=0.25.1",
+    "pymediainfo>=7.0.1",
     "python-dotenv>=1.1.0",
     "sounddevice>=0.5.2",
     "soundfile>=0.13.1",

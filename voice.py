@@ -17,6 +17,7 @@ from os import path
 import json
 from loguru import logger
 from dotenv import load_dotenv
+from pymediainfo import MediaInfo
 
 load_dotenv()
 
@@ -122,25 +123,13 @@ def chunk_mp3(mp3_file):
 
 
 def transcribe_mp3(audio_chunks):
-    apiKey = os.environ.get("OPENAI_API_KEY")
-    client = OpenAI(api_key=apiKey)
     markdown_transcript = ""
     for i, chunk_filename in enumerate(audio_chunks):
         print("transcribing chunk", i + 1, "of", len(audio_chunks))
-        with open(chunk_filename, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                file=audio_file,
-                model="whisper-1",
-                language="en",
-                response_format="text",
-                prompt=(
-                    "Continuation of audio (might begin mid-sentence): "
-                    if i > 0
-                    else "Welcome to this technical episode. "
-                ),
-            )
-        transcript = transcript[:-1] if transcript[-1] == "." else transcript
-        markdown_transcript += " " + transcript + "."
+        transcript = processMp3File(chunk_filename)
+        if transcript != "transcription api error" and transcript != "DURATION UNKNOWN":
+            transcript = transcript[:-1] if transcript and transcript[-1] == "." else transcript
+            markdown_transcript += " " + transcript + "."
 
     markdown_transcript = re.sub(
         r"((?:[^.!?]+[.!?]\s){4})", r"\1\n\n", markdown_transcript
@@ -160,12 +149,59 @@ def transcribe_mp3(audio_chunks):
     return markdown_transcript
 
 
+def mediainfo(mp3FileName):
+    media_info = MediaInfo.parse(mp3FileName)
+    for track in media_info.tracks:
+        if track.track_type == 'Audio':
+            return {'duration': track.duration / 1000}  # Convert milliseconds to seconds
+    return {}
+
+
+def transcribe_single_file(mp3FileName):
+    # Get the duration of the audio file
+    info = mediainfo(mp3FileName)
+    
+    if "duration" not in info:
+        print(f"Could not determine duration for {mp3FileName}")
+        return "DURATION UNKNOWN"
+        
+    duration = float(info['duration'])
+    temp_file = None
+    if duration > 800:
+        print(f"Cropping {mp3FileName} to 800 seconds")
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(mp3FileName)
+        audio = audio[:800*1000]  # pydub works in milliseconds
+        temp_file = mp3FileName + ".temp.mp3"
+        audio.export(temp_file, format="mp3")
+        mp3FileName = temp_file
+
+    try:
+        apiKey = os.environ.get("openaiApiKey") or os.environ.get("OPENAI_API_KEY")
+        client = OpenAI(api_key=apiKey)
+        api_response = client.audio.transcriptions.create(
+            model="gpt-4o-transcribe",
+            file=open(mp3FileName, "rb"),
+            response_format="text"
+        )
+        transcribed_text = api_response
+    except Exception as e:
+        transcribed_text = "transcription api error"
+        print(f"Error transcribing {mp3FileName}: {e}")
+    
+    if temp_file:
+        try:
+            os.remove(temp_file)
+        except Exception as e:
+            print(f"Error removing temporary file {temp_file}: {e}")
+    
+    return transcribed_text
+
+
 def processMp3File(mp3FileName):
     increase_volume(mp3FileName, getConfig()["volume_boost_percent"])
     try:
-        audio_chunks = chunk_mp3(mp3FileName)
-        markdown_transcript = transcribe_mp3(audio_chunks)
-        return markdown_transcript
+        return transcribe_single_file(mp3FileName)
     except Exception as e:
         error = traceback.format_exc()
         logger.info(f"Error during audio transcription: {e} {error}")
@@ -301,3 +337,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
