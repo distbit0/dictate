@@ -1,141 +1,155 @@
-# Dictate: Voice-to-Text Transcription Tool
+# Dictate – Voice-to-Text Automation
 
-This script provides a voice dictation service for Linux. It records audio from your microphone, transcribes it using OpenAI's Whisper API, copies the resulting text to your clipboard, and can optionally type it out where your cursor is focused.
+`voice.py` turns your microphone into a hands-free dictation tool.  
+It records audio until you signal it to stop, sends the audio to OpenAI’s
+Whisper / GPT-4o transcription API, then **types** the recognised text into the
+currently-focused window via `xdotool` (or you can copy the transcript from the
+clipboard / log file).
 
-## Features
+---
 
--   **Live Audio Recording:** Captures audio directly from the microphone.
--   **Signal-Based Control:** Start recording by running the script. Stop recording by running the script a second time.
--   **OpenAI Whisper Transcription:** Utilizes the `whisper-1` model for accurate speech-to-text.
--   **Audio Processing:** Includes volume boosting for clearer audio and chunking for large recordings.
--   **Clipboard Integration:** Automatically copies the transcribed text to the system clipboard (`xclip`).
--   **Optional Typing:** Can simulate keyboard input to type out the transcript using `dotool`.
--   **Configuration:** Customizable through a `config.json` file and environment variables.
--   **Desktop Notifications:** Provides feedback using `notify-send`.
--   **Logging:** Detailed logging to `app.log` using `loguru`.
--   **Singleton Instance:** Uses a lock file to prevent multiple recording sessions from running simultaneously.
+## Main Workflow
+
+1. **Start** `python voice.py` (or bind it to a hotkey).
+2. Script checks for a lock-file to ensure only one instance runs.
+3. A named FIFO `./stop_recording_signal` is created – recording begins.
+4. When you want to stop, **write anything** to that pipe, e.g.:
+
+   ```bash
+   echo > stop_recording_signal      # or bind this to another hotkey
+   ```
+
+5. Audio is saved to `tmp/<timestamp>_<rand>.wav` then (optionally) volume-boosted.
+6. File is chunked / trimmed if too long, sent to OpenAI for transcription.
+7. The transcript is post-processed, copied to the clipboard and—when
+   `type_dictation` is true—typed into the active window with `xdotool`.
+8. Old temporary media files are automatically purged (12-hour retention).
+
+Desktop notifications (`notify-send`) announce major steps and errors.
+
+---
+
+## Configuration
+
+All runtime options live in `config.json` **in the project root**:
+
+```json
+{
+  "max_recording_duration": 300,            // seconds (fallback safety-stop)
+  "input_device": "alsa_input.xxx",        // PulseAudio source name or omit
+  "type_dictation": true,                   // if true use xdotool to type
+  "volume_boost_percent": 40               // extra gain applied to WAV before sending
+}
+```
+
+•  `input_device` – exact PulseAudio source name.  Leave blank to keep default
+   device. You can list sources with `pactl list short sources`.
+•  `volume_boost_percent` – applied via *pydub*; helps quiet mics.
+
+### Environment variables
+
+| Variable          | Purpose                          |
+|-------------------|----------------------------------|
+| `OPENAI_API_KEY`  | Required for transcription calls |
+| `openaiApiKey`    | (alternative name)               |
+
+Create a `.env` file or export the vars in your shell.  The project loads them
+with `python-dotenv`.
+
+---
 
 ## Dependencies
 
-### Python Libraries
+Python packages (see `requirements.txt` or install automatically):
 
--   `sounddevice`: For audio recording.
--   `pydub`: For audio manipulation (volume adjustment, chunking). Requires `ffmpeg`.
--   `pulsectl`: For PulseAudio control (setting input device).
--   `openai`: For interacting with the OpenAI API.
--   `numpy`: For numerical audio data.
--   `soundfile`: For saving audio files.
--   `python-dotenv`: For managing environment variables (like API keys).
--   `loguru`: For advanced logging.
+- sounddevice
+- pydub   *(requires ffmpeg binaries)*
+- numpy
+- soundfile
+- pulsectl
+- openai
+- loguru
+- python-dotenv
+- pymediainfo *(requires libmediainfo)*
 
-It's recommended to install these using a `requirements.txt` file:
+System packages (Ubuntu/Debian names):
+
 ```bash
-pip install sounddevice pydub pulsectl openai numpy soundfile python-dotenv loguru
+sudo apt install ffmpeg xdotool libmediainfo0v5 libmediainfo-dev libsndfile1
 ```
 
-### System Tools
+`notify-send` comes from `libnotify-bin` (usually already present).
 
--   **`ffmpeg`**: Required by `pydub` for audio processing, especially MP3 handling.
-    ```bash
-    # On Fedora
-    sudo dnf install ffmpeg
-    # On Debian/Ubuntu
-    sudo apt install ffmpeg
-    ```
--   **`xclip`**: For copying text to the clipboard.
-    ```bash
-    # On Fedora
-    sudo dnf install xclip
-    # On Debian/Ubuntu
-    sudo apt install xclip
-    ```
--   **`notify-send`**: For desktop notifications (usually pre-installed with desktop environments).
--   **`dotool`**: (Optional) For typing out the transcribed text.
+---
 
-## Setup and Configuration
+## Installation
 
-1.  **Clone the repository or download `voice.py`**.
+```bash
+# 1. Clone
+git clone https://github.com/youruser/dictate.git
+cd dictate
 
-2.  **Install Python dependencies** (see above).
+# 2. Create Python env (recommended)
+python -m venv .venv && source .venv/bin/activate
 
-3.  **Install system tools** (see above).
+# 3. Install deps
+pip install -r requirements.txt
 
-4.  **OpenAI API Key:**
-    Create a `.env` file in the same directory as `voice.py` with your OpenAI API key:
-    ```env
-    OPENAI_API_KEY=your_openai_api_key_here
-    ```
+# 4. Add your OpenAI key
+echo "OPENAI_API_KEY=sk-..." > .env
 
-5.  **Configuration File (`config.json`):**
-    Create a `config.json` file in the same directory as `voice.py`. This file is relative to the script's location.
-    Example `config.json`:
-    ```json
-    {
-        "input_device": "alsa_input.pci-0000_00_1f.3.analog-stereo",
-        "volume_boost_percent": 20,
-        "max_recording_duration": 1800, 
-        "type_dictation": true
-    }
-    ```
-    -   `input_device` (string, optional): The name of your PulseAudio input device (e.g., microphone). Find your device name using `pactl list sources short`.
-    -   `volume_boost_percent` (integer): Percentage to boost the audio volume before transcription.
-    -   `max_recording_duration` (integer): Maximum recording time in seconds (e.g., 1800 for 30 minutes).
-    -   `type_dictation` (boolean): If `true`, the script will use `dotool` to type the transcribed text.
+# 5. (Optional) adjust config.json
+```
 
-6.  **Temporary Files Directory:**
-    The script will create a `tmp/` directory relative to its own location for storing temporary audio files.
+---
 
-## Usage
+## Usage Examples
 
-1.  **Navigate to the script's directory:**
-    ```bash
-    cd /path/to/script_directory/
-    ```
-2.  **To start recording:**
-    ```bash
-    python voice.py
-    ```
-    A notification "Starting transcription..." will appear. A lock file (`voice_lock_file`) and a named pipe (`stop_recording_signal`) will be created in the current working directory.
+Start recording (bind to a hotkey, e.g. Super+Alt+D):
 
-3.  **To stop recording:**
-    Open a new terminal (or run in the background) in the same directory and execute:
-    ```bash
-    python voice.py
-    ```
-    This sends a signal to the recording instance. The recording will stop, process the audio, and the transcript will be copied to your clipboard. If `type_dictation` is true, it will also be typed out.
+```bash
+python voice.py &
+```
 
-    Alternatively, recording also stops if:
-    - The `max_recording_duration` is reached.
-    - The `voice_lock_file` or `stop_recording_signal` pipe is manually deleted (not recommended as primary stop method).
+Stop recording from another shell / script:
 
-## Logging
+```bash
+echo > stop_recording_signal
+```
 
-Logs are written to `app.log` in the same directory as the script. This file rotates and is retained for a limited number of versions.
+The script will automatically exit after typing/copying the transcript.
 
-## Installing `dotool` (Optional)
+If you attempt to launch a second instance while one is running it will detect
+the lock-file and show a desktop notification instead of starting.
 
-`dotool` is used to simulate keyboard input for typing out the dictated text. If you want to use this feature, install `dotool`:
+---
 
-### Installing `dotool` on Fedora
+## Internals – Key Functions
 
-1.  **Enable the Copr repository:**
-    ```bash
-    sudo dnf copr enable smallcms/dotool -y
-    ```
+| Function | Description |
+|----------|-------------|
+| `record_until_signal()` | Streams microphone samples into memory until FIFO or duration limit hits. |
+| `transcribe_mp3()`      | Splits long files into ~10-minute chunks, calls `processMp3File()` for each and stitches the results into paragraphs. |
+| `processMp3File()`      | Sends a single file to OpenAI Audio endpoint (model `gpt-4o-transcribe`). |
+| `recognize_and_copy_to_memory()` | Runs volume boost, transcription, then `xdotool type` to inject text. |
+| `deleteMp3sOlderThan()` | Cleans `tmp/` to avoid disk bloat. |
 
-2.  **Install `dotool`:**
-    ```bash
-    sudo dnf install dotool -y
-    ```
+Read the well-commented source in `voice.py` for deeper details.
 
-3.  **Reload udev rules and trigger events:**
-    ```bash
-    sudo udevadm control --reload && sudo udevadm trigger
-    ```
+---
 
-4.  **Enable and start the `dotoold` service for your user:**
-    ```bash
-    systemctl --user --now enable dotoold.service
-    ```
+## Troubleshooting
 
-(For other distributions, please refer to `dotool`'s official installation instructions.)
+•  “ALSA lib … cannot find card” – set a valid `input_device` or omit it.  
+•  “Error transcribing …” – check OpenAI key / quota.
+•  No text typed – make sure the active window accepts keystrokes and
+   `type_dictation` is true.
+
+Enable debug logging by inspecting `app.log` (rotated every 5 kB by Loguru).
+
+---
+
+## License
+
+MIT 
+Contributions welcome – open a PR!
