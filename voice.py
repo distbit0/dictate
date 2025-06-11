@@ -1,18 +1,3 @@
-"""
-voice_remote_low_latency.py – lower‑latency version **without** any local ASR model.
-
-Latency‑cutting ideas preserved
--------------------------------
-* **Keep using OpenAI Whisper servers** (we default to `whisper-1`, which is lighter and
-  faster than `gpt-4o-transcribe`).
-* **No temp files** – audio stays in memory as a FLAC compressed `BytesIO` object.
-* **16 kHz mono float32 capture** matches Whisper’s native rate.  No resample required.
-* **Simple NumPy peak normalisation** replaces the pydub + ffmpeg round‑trip.
-* **Singleton OpenAI client** so HTTP/2 connection stays warm across calls.
-* **Profile wrapper retained** so you can keep measuring.
-
-Result: Typical 3‑second utterance → <1 s server time + ~100 ms local pre‑/post‑processing.
-"""
 from __future__ import annotations
 
 import io
@@ -183,7 +168,7 @@ def recognise_and_copy_to_memory():
         "xdotool",
         "type",
         "--delay",
-        "12",
+        "7",
         "--clearmodifiers",
         "--",
         text,
