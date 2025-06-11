@@ -23,7 +23,7 @@ load_dotenv()
 def configure_logging():
     logger.add(
         "app.log",
-        rotation="30 KB",
+        rotation="5 KB",
         retention=5,
         enqueue=True,
         backtrace=True,
