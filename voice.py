@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import shlex
 import subprocess
 import threading
 import time
@@ -143,7 +142,7 @@ def transcribe(audio: np.ndarray, sr: int) -> str:
 
     client = get_client()
     resp = client.audio.transcriptions.create(
-        model="whisper-1",
+        model="gpt-4o-mini-transcribe",
         file=buf,
         response_format="text",
     )
