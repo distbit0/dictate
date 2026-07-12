@@ -7,3 +7,5 @@ voice.sh
 *mp3
 tmp/
 
+
+**/node_modules/

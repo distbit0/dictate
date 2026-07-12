@@ -1,6 +1,10 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
+
+[options]
+exclude-newer = "2026-05-11T15:30:07.020598346Z"
+exclude-newer-span = "P1W"
 
 [[package]]
 name = "annotated-types"
